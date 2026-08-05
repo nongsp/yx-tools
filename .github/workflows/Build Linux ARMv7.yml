@@ -4,51 +4,53 @@ on:
   push:
     branches:
       - main
-      - master
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  build-linux-armv7:
+    name: Build Linux ARMv7 (GOARM=7)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
+          cache: true
 
-      - name: Download Dependencies
-        run: |
-          go mod download
+      - name: Download dependencies
+        run: go mod download
 
-      - name: Build Linux ARMv7
+      - name: Build
         env:
           GOOS: linux
           GOARCH: arm
-          GOARM: 7
-          CGO_ENABLED: 0
+          GOARM: '7'
+          CGO_ENABLED: '0'
         run: |
-          mkdir -p release
-          go build \
-            -trimpath \
-            -ldflags="-s -w" \
-            -o release/yx-tools .
+          set -euxo pipefail
+          mkdir -p dist
+          go build -trimpath -ldflags='-s -w' -o dist/yx_linux_armv7 ./cmd/yx
+          file dist/yx_linux_armv7
+          test "$(uname -m)" != "armv7l" || true
 
-      - name: Show Binary
+      - name: Package
         run: |
-          file release/yx-tools
-          ls -lh release/
+          set -euxo pipefail
+          tar -C dist -czf yx_linux_armv7.tar.gz yx_linux_armv7
+          sha256sum yx_linux_armv7.tar.gz > yx_linux_armv7.tar.gz.sha256
 
-      - name: Upload Artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: yx-tools-linux-armv7
-          path: release/yx-tools
+          name: yx-linux-armv7
+          path: |
+            yx_linux_armv7.tar.gz
+            yx_linux_armv7.tar.gz.sha256
+          if-no-files-found: error
           retention-days: 30
