@@ -1,0 +1,54 @@
+name: Build Linux ARMv7
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Download Dependencies
+        run: |
+          go mod download
+
+      - name: Build Linux ARMv7
+        env:
+          GOOS: linux
+          GOARCH: arm
+          GOARM: 7
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p release
+          go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o release/yx-tools .
+
+      - name: Show Binary
+        run: |
+          file release/yx-tools
+          ls -lh release/
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yx-tools-linux-armv7
+          path: release/yx-tools
+          retention-days: 30
