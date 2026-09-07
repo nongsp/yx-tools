@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -26,6 +27,8 @@ type Config struct {
 	SampleSize int     `json:"sample_size"`
 	HTTPing    bool    `json:"httping"`
 	DisableDL  bool    `json:"disable_dl"`
+	DLTimeout  int     `json:"dl_timeout"`
+	MaxRunTime int     `json:"max_runtime"`
 }
 
 const configName = "yx-config.json"
@@ -46,6 +49,7 @@ func DefaultConfig() *Config {
 		TestURL:    DefaultTestURL,
 		Port:       443,
 		SampleSize: 1000,
+		DLTimeout:  10,
 	}
 }
 
@@ -62,19 +66,48 @@ func LoadConfig() *Config {
 		c := *cfg
 		return &c
 	}
-	cfg = DefaultConfig()
-	data, err := os.ReadFile(ConfigPath())
-	if err == nil {
-		_ = json.Unmarshal(data, cfg)
-	}
-	if cfg.TestURL == "" {
-		cfg.TestURL = DefaultTestURL
-	}
-	if cfg.Port <= 0 {
-		cfg.Port = 443
-	}
+	cfg = loadConfigFrom(ConfigPath())
 	c := *cfg
 	return &c
+}
+
+// 历史上用过、现在已经测不出速度的下载地址。
+// 这些地址存进了老用户的配置里，升级后会被回填回来盖掉新默认值，
+// 结果就是版本换了速度依然是 0，所以读取时直接迁移掉。
+var deadTestURLs = []string{
+	"cf.xiu2.xyz",           // 返回 403
+	"cloudflaremirrors.com", // 返回 200 但 body 是空的
+	// v3.0.3/v3.0.4 误把私人域名设成了默认值，用户配置里存下来的要清掉，
+	// 否则升级后还在替域名主人烧流量
+	"xy.kg",
+}
+
+func isDeadTestURL(u string) bool {
+	for _, dead := range deadTestURLs {
+		if strings.Contains(u, dead) {
+			return true
+		}
+	}
+	return false
+}
+
+// loadConfigFrom 从指定路径读配置并补齐缺省值。
+// 独立出来是为了能直接测到失效地址的迁移。
+func loadConfigFrom(path string) *Config {
+	c := DefaultConfig()
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, c)
+	}
+	if c.TestURL == "" || isDeadTestURL(c.TestURL) {
+		c.TestURL = DefaultTestURL
+	}
+	if c.Port <= 0 {
+		c.Port = 443
+	}
+	if c.DLTimeout <= 0 {
+		c.DLTimeout = 10
+	}
+	return c
 }
 
 // SaveConfig 覆盖写入配置
